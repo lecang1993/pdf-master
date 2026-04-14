@@ -1,4 +1,4 @@
-const API_URL = 'http://localhost:3001/api'; 
+const API_URL = 'https://pdf-master-api.onrender.com'; // Thay đổi nếu backend chạy ở địa chỉ khác
 
 // Toast System
 function showToast(message, type = 'success') {
