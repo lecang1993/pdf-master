@@ -3,96 +3,190 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>PDF Master - Công cụ xử lý PDF chuyên nghiệp</title>
+    <title>Premium PDF Tools</title>
     <link rel="stylesheet" href="style.css">
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <!-- jsPDF -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 </head>
 <body>
+    <!-- Toast Container -->
+    <div id="toast-container" class="toast-container"></div>
+
     <div class="container">
         <header>
-            <h1>📄 PDF Master Pro</h1>
-            <p>Phần mềm xử lý PDF do Lê Cang phát triển</p>
+            <div class="header-icon">
+                <i class="fas fa-file-pdf"></i>
+            </div>
+            <h1>PDF <span>Premium Pro</span></h1>
+            <p>Giải pháp xử lý tài liệu nhanh chóng do Lê Cang phát triển</p>
         </header>
 
         <div class="tabs">
-            <button class="tab-btn active" data-tab="convert">🔄 Chuyển đổi</button>
-            <button class="tab-btn" data-tab="merge">📑 Gộp PDF</button>
-            <button class="tab-btn" data-tab="split">✂️ Tách PDF</button>
-            <button class="tab-btn" data-tab="sign">✍️ Ký điện tử</button>
+            <button class="tab-btn active" data-tab="convert">
+                <i class="fas fa-exchange-alt"></i> Chuyển đổi
+            </button>
+            <button class="tab-btn" data-tab="merge">
+                <i class="fas fa-layer-group"></i> Gộp PDF
+            </button>
+            <button class="tab-btn" data-tab="split">
+                <i class="fas fa-cut"></i> Tách PDF
+            </button>
+            <button class="tab-btn" data-tab="sign">
+                <i class="fas fa-signature"></i> Ký điện tử
+            </button>
         </div>
 
         <!-- Tab 1: Chuyển đổi -->
         <div id="convert-tab" class="tab-content active">
             <div class="upload-area" id="convert-upload">
-                <div class="upload-icon">🔄</div>
-                <p>Kéo thả file vào đây hoặc click để chọn</p>
-                <small>Hỗ trợ: .docx, .xlsx, .xls (Chuyển sang PDF)</small>
-                <input type="file" id="convert-file" accept=".docx,.xlsx,.xls,.pdf" style="display:none">
+                <div class="upload-icon"><i class="fas fa-cloud-upload-alt"></i></div>
+                <p>Kéo thả file vào đây hoặc <span>click để chọn</span></p>
+                <small>Hỗ trợ: .docx, .xlsx, .xls, .png, .jpg, .jpeg (Có thể chọn nhiều ảnh để gộp thành PDF nhiều trang)</small>
+                <input type="file" id="convert-file" accept=".docx,.xlsx,.xls,.pdf,image/*" multiple style="display:none">
             </div>
-            <div id="convert-file-info" class="file-info"></div>
-            <button id="convert-btn" class="btn btn-primary" disabled>Chuyển sang PDF</button>
+            <div id="convert-file-list" class="file-list"></div>
+            <button id="convert-btn" class="btn btn-primary" disabled>
+                <i class="fas fa-sync-alt"></i> Chuyển sang PDF
+            </button>
         </div>
 
         <!-- Tab 2: Gộp PDF -->
         <div id="merge-tab" class="tab-content">
             <div class="upload-area" id="merge-upload">
-                <div class="upload-icon">📑</div>
-                <p>Kéo thả file PDF vào đây hoặc click để chọn</p>
+                <div class="upload-icon"><i class="fas fa-layer-group"></i></div>
+                <p>Kéo thả file PDF vào đây hoặc <span>click để chọn</span></p>
                 <small>Chọn ít nhất 2 file PDF để gộp</small>
                 <input type="file" id="merge-files" multiple accept=".pdf" style="display:none">
             </div>
             <div id="merge-file-list" class="file-list"></div>
-            <button id="merge-btn" class="btn btn-primary" disabled>Gộp PDF</button>
+            <button id="merge-btn" class="btn btn-primary" disabled>
+                <i class="fas fa-object-group"></i> Gộp PDF
+            </button>
         </div>
 
         <!-- Tab 3: Tách PDF -->
         <div id="split-tab" class="tab-content">
             <div class="upload-area" id="split-upload">
-                <div class="upload-icon">✂️</div>
-                <p>Kéo thả file PDF vào đây hoặc click để chọn</p>
+                <div class="upload-icon"><i class="fas fa-cut"></i></div>
+                <p>Kéo thả file PDF vào đây hoặc <span>click để chọn</span></p>
                 <small>Chọn 1 file PDF để tách</small>
                 <input type="file" id="split-file" accept=".pdf" style="display:none">
             </div>
             <div id="split-file-info" class="file-info"></div>
             <div class="split-options">
-                <label>
+                <label class="radio-label">
                     <input type="radio" name="split-mode" value="first" checked> Tách trang đầu
                 </label>
-                <label>
+                <label class="radio-label">
                     <input type="radio" name="split-mode" value="range"> Tách theo khoảng trang
                 </label>
-                <input type="text" id="split-range" placeholder="VD: 1-3,5,7-9" disabled>
+                <input type="text" id="split-range" placeholder="VD: 1-3,5,7-9" disabled class="modern-input">
             </div>
-            <button id="split-btn" class="btn btn-primary" disabled>Tách PDF</button>
+            <button id="split-btn" class="btn btn-primary" disabled>
+                <i class="fas fa-scissors"></i> Tách PDF
+            </button>
         </div>
 
         <!-- Tab 4: Ký điện tử -->
         <div id="sign-tab" class="tab-content">
-            <div class="upload-area" id="sign-pdf-upload">
-                <div class="upload-icon">📄</div>
-                <p>Chọn file PDF cần ký</p>
-                <input type="file" id="sign-pdf-file" accept=".pdf" style="display:none">
+            <div class="dual-upload">
+                <div class="upload-area small" id="sign-pdf-upload">
+                    <div class="upload-icon"><i class="fas fa-file-pdf"></i></div>
+                    <p>Chọn file PDF cần ký</p>
+                    <input type="file" id="sign-pdf-file" accept=".pdf" style="display:none">
+                </div>
+                <div class="upload-area small" id="sign-image-upload">
+                    <div class="upload-icon"><i class="fas fa-pen"></i></div>
+                    <p>Chọn ảnh chữ ký (PNG/JPG)</p>
+                    <input type="file" id="sign-image-file" accept="image/png,image/jpeg" style="display:none">
+                </div>
             </div>
             <div id="sign-pdf-info" class="file-info"></div>
-            
-            <div class="upload-area" id="sign-image-upload">
-                <div class="upload-icon">✍️</div>
-                <p>Chọn ảnh chữ ký (PNG/JPG)</p>
-                <input type="file" id="sign-image-file" accept="image/png,image/jpeg" style="display:none">
-            </div>
             <div id="sign-image-info" class="file-info"></div>
             
             <div class="sign-form">
-                <input type="text" id="signer-name" placeholder="Họ tên người ký">
-                <input type="text" id="sign-reason" placeholder="Lý do ký (VD: Đã kiểm tra)">
-                <input type="text" id="sign-location" placeholder="Địa điểm ký">
+                <div class="input-group">
+                    <i class="fas fa-user"></i>
+                    <input type="text" id="signer-name" placeholder="Họ tên người ký">
+                </div>
+                <div class="input-group">
+                    <i class="fas fa-info-circle"></i>
+                    <input type="text" id="sign-reason" placeholder="Lý do ký (VD: Đã kiểm tra)">
+                </div>
+                <div class="input-group">
+                    <i class="fas fa-map-pin"></i>
+                    <input type="text" id="sign-location" placeholder="Địa điểm ký">
+                </div>
             </div>
             
-            <button id="sign-btn" class="btn btn-primary" disabled>Ký điện tử</button>
+            <button id="sign-btn" class="btn btn-primary" disabled>
+                <i class="fas fa-check-circle"></i> Ký điện tử
+            </button>
         </div>
 
+        <!-- Loading Overlay -->
         <div id="loading" class="loading hidden">
             <div class="spinner"></div>
-            <p>Đang xử lý...</p>
+            <p>Đang xử lý dữ liệu...</p>
+        </div>
+    </div>
+
+    <!-- Popup giới thiệu -->
+    <div id="introPopup" class="intro-popup">
+        <div class="intro-popup-content">
+            <div class="intro-popup-header">
+                <div class="intro-icon">
+                    <i class="fas fa-file-pdf"></i>
+                </div>
+                <h2>Phần Mềm PDF Premium </h2>
+                <button class="intro-popup-close" onclick="closeIntro()">&times;</button>
+            </div>
+            <div class="intro-popup-body">
+                <div class="intro-version">
+                    <span class="version-badge"><i class="fas fa-code-branch"></i> Version 2.0</span>
+                    <span class="release-date"><i class="far fa-calendar-alt"></i> 04/2026</span>
+                </div>
+                
+                <div class="intro-section">
+                    <h3><i class="fas fa-info-circle"></i> Giới thiệu</h3>
+                    <p>Công cụ PDF dành cho quản lý tài liệu chuyên nghiệp được phát triển bởi <strong>Lê Cang</strong>, những tính năng tốn phí A/C hoàn toàn được sử dụng miễn phí, không cần đăng nhập tài khoản, sử dụng linh hoạt và bảo mật dữ liệu tuyệt đối.</p>
+                </div>
+
+                <div class="intro-section">
+                    <h3><i class="fas fa-star"></i> Tính năng nổi bật</h3>
+                    <ul class="feature-list">
+                        <li><i class="fas fa-arrow-right"></i> Chuyển đổi DOCX, XLSX, XLS, và hình ảnh PNG, JPG, JPEG thành PDF</li>
+                        <li><i class="fas fa-arrow-right"></i> Gộp nhiều file PDF thành một</li>
+                        <li><i class="fas fa-arrow-right"></i> Tách PDF theo trang hoặc khoảng trang</li>
+                        <li><i class="fas fa-arrow-right"></i> Xử lý tài liệu không giới hạn</li>
+                        <li><i class="fas fa-arrow-right"></i> Truy cập bằng websites, thiết bị di động và máy tính</li>
+                        <li><i class="fas fa-arrow-right"></i> Ký điện tử lên PDF (thêm chữ ký ảnh)</li>
+                        <li><i class="fas fa-arrow-right"></i> Bảo mật dữ liệu tuyệt đối</li>
+                    </ul>
+                </div>
+                <div class="intro-section">
+                    <h3><i class="fas fa-user-circle"></i> Thông tin tác giả</h3>
+                    <div class="author-info">
+                        <p><i class="fas fa-envelope"></i>Email: lecang1993@gmail.com</p>
+                        <p><i class="fas fa-phone-alt"></i>SĐT: 090 116 4793</p>
+                        <p><i class="fab fa-telegram"></i>Telegram: Liên hệ qua email</p>
+                    </div>
+                </div>
+                <div class="intro-note">
+                    <i class="fas fa-shield-alt"></i>
+                    <span>File của A/C được xử lý trên server và tự động xóa sau khi tải về, đảm bảo an toàn dữ liệu.</span>
+                </div>
+            </div>
+            <div class="intro-popup-footer">
+                <button class="intro-btn" onclick="closeIntro()">
+                    <i class="fas fa-rocket"></i> Bắt đầu sử dụng
+                </button>
+                <label class="intro-checkbox">
+                    <input type="checkbox" id="dontShowIntroAgain"> <span>Không hiển thị lại lần sau</span>
+                </label>
+            </div>
         </div>
     </div>
 

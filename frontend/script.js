@@ -1,4 +1,24 @@
-const API_URL = 'http://localhost:3001/api';
+const API_URL = 'https://pdf-master-api.onrender.com'; 
+
+// Toast System
+function showToast(message, type = 'success') {
+    const container = document.getElementById('toast-container');
+    const toast = document.createElement('div');
+    toast.className = `toast ${type}`;
+    
+    let icon = 'check-circle';
+    if (type === 'error') icon = 'exclamation-circle';
+    else if (type === 'warning') icon = 'exclamation-triangle';
+    
+    toast.innerHTML = `<i class="fas fa-${icon}"></i><span>${message}</span>`;
+    container.appendChild(toast);
+    
+    setTimeout(() => {
+        toast.style.opacity = '0';
+        toast.style.transform = 'translateX(20px)';
+        setTimeout(() => toast.remove(), 300);
+    }, 3500);
+}
 
 // Tab switching
 document.querySelectorAll('.tab-btn').forEach(btn => {
@@ -13,75 +33,219 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
     });
 });
 
-// ==================== 1. CHUYỂN ĐỔI ====================
+// ==================== 1. CHUYỂN ĐỔI (Hỗ trợ kéo thả & nhiều ảnh) ====================
 const convertUpload = document.getElementById('convert-upload');
-const convertFile = document.getElementById('convert-file');
-const convertFileInfo = document.getElementById('convert-file-info');
+const convertFileInput = document.getElementById('convert-file');
+const convertFileListDiv = document.getElementById('convert-file-list');
 const convertBtn = document.getElementById('convert-btn');
-let selectedConvertFile = null;
 
-convertUpload.addEventListener('click', () => convertFile.click());
-convertFile.addEventListener('change', (e) => {
-    selectedConvertFile = e.target.files[0];
-    if (selectedConvertFile) {
-        const fileExt = selectedConvertFile.name.split('.').pop();
-        const icon = fileExt === 'docx' ? '📝' : (fileExt === 'xlsx' || fileExt === 'xls' ? '📊' : '📄');
-        convertFileInfo.innerHTML = `
-            <div class="file-item">
-                <span>${icon} ${selectedConvertFile.name}</span>
-                <span>${(selectedConvertFile.size / 1024).toFixed(2)} KB</span>
-            </div>
-        `;
-        convertBtn.disabled = false;
-    } else {
-        convertFileInfo.innerHTML = '';
-        convertBtn.disabled = true;
+let selectedConvertFiles = [];
+
+// Kích hoạt click
+convertUpload.addEventListener('click', () => convertFileInput.click());
+
+// Drag & Drop
+['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+    convertUpload.addEventListener(eventName, (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+    });
+});
+
+convertUpload.addEventListener('dragover', () => {
+    convertUpload.classList.add('drag-over');
+});
+
+convertUpload.addEventListener('dragleave', () => {
+    convertUpload.classList.remove('drag-over');
+});
+
+convertUpload.addEventListener('drop', (e) => {
+    convertUpload.classList.remove('drag-over');
+    const files = Array.from(e.dataTransfer.files);
+    if (files.length > 0) {
+        handleSelectedFiles(files);
     }
 });
 
-convertBtn.addEventListener('click', async () => {
-    if (!selectedConvertFile) {
-        alert('Vui lòng chọn file cần chuyển đổi');
+convertFileInput.addEventListener('change', (e) => {
+    const files = Array.from(e.target.files);
+    if (files.length > 0) {
+        handleSelectedFiles(files);
+    }
+});
+
+function handleSelectedFiles(files) {
+    const validFiles = files.filter(file => {
+        const ext = file.name.split('.').pop().toLowerCase();
+        const isValid = ['docx', 'xlsx', 'xls', 'pdf', 'png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp'].includes(ext);
+        if (!isValid) {
+            showToast(`⚠️ Bỏ qua file không hỗ trợ: ${file.name}`, 'warning');
+        }
+        return isValid;
+    });
+
+    if (validFiles.length === 0) {
+        selectedConvertFiles = [];
+        convertFileListDiv.innerHTML = '';
+        convertBtn.disabled = true;
         return;
     }
-    
-    const formData = new FormData();
-    formData.append('file', selectedConvertFile);
-    
-    showLoading(true);
-    
-    try {
-        const response = await fetch(`${API_URL}/convert-to-pdf`, {
-            method: 'POST',
-            body: formData
-        });
+
+    selectedConvertFiles = validFiles;
+    renderConvertFileList();
+    convertBtn.disabled = false;
+}
+
+function renderConvertFileList() {
+    convertFileListDiv.innerHTML = selectedConvertFiles.map(file => {
+        const ext = file.name.split('.').pop().toLowerCase();
+        let icon = 'fa-file';
+        if (ext === 'docx') icon = 'fa-file-word';
+        else if (ext === 'xlsx' || ext === 'xls') icon = 'fa-file-excel';
+        else if (ext === 'pdf') icon = 'fa-file-pdf';
+        else if (['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp'].includes(ext)) icon = 'fa-file-image';
         
-        if (!response.ok) {
-            const error = await response.json();
-            throw new Error(error.error || 'Lỗi chuyển đổi');
-        }
-        
-        const blob = await response.blob();
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = selectedConvertFile.name.replace(/\.(docx|xlsx|xls)$/i, '.pdf');
-        a.click();
-        URL.revokeObjectURL(url);
-        
-        alert('✅ Chuyển đổi thành công!');
-        
-        selectedConvertFile = null;
-        convertFile.value = '';
-        convertFileInfo.innerHTML = '';
-        convertBtn.disabled = true;
-        
-    } catch (error) {
-        alert('❌ Lỗi: ' + error.message);
-    } finally {
-        showLoading(false);
+        return `
+            <div class="file-item">
+                <span><i class="fas ${icon}"></i> ${file.name}</span>
+                <span>${(file.size / 1024).toFixed(2)} KB</span>
+            </div>
+        `;
+    }).join('');
+}
+
+convertBtn.addEventListener('click', async () => {
+    if (selectedConvertFiles.length === 0) {
+        showToast('Vui lòng chọn ít nhất một file', 'warning');
+        return;
     }
+
+    const imageFiles = selectedConvertFiles.filter(f => {
+        const ext = f.name.split('.').pop().toLowerCase();
+        return ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp'].includes(ext);
+    });
+    const officeFiles = selectedConvertFiles.filter(f => {
+        const ext = f.name.split('.').pop().toLowerCase();
+        return ['docx', 'xlsx', 'xls'].includes(ext);
+    });
+
+    if (imageFiles.length > 0 && officeFiles.length > 0) {
+        showToast('⚠️ Không thể trộn ảnh và file văn phòng. Vui lòng chọn riêng từng loại.', 'warning');
+        return;
+    }
+
+    if (imageFiles.length > 0) {
+        try {
+            showLoading(true);
+            const { jsPDF } = window.jspdf;
+            const doc = new jsPDF();
+            let isFirstPage = true;
+
+            for (let i = 0; i < imageFiles.length; i++) {
+                const file = imageFiles[i];
+                const imgData = await readFileAsDataURL(file);
+                
+                const img = await loadImage(imgData);
+                const imgWidth = img.width;
+                const imgHeight = img.height;
+                
+                const pdfWidth = 210;
+                const pdfHeight = (imgHeight * pdfWidth) / imgWidth;
+                
+                if (!isFirstPage) {
+                    doc.addPage([pdfWidth, pdfHeight], pdfHeight > pdfWidth ? 'portrait' : 'landscape');
+                } else {
+                    doc.addPage([pdfWidth, pdfHeight], pdfHeight > pdfWidth ? 'portrait' : 'landscape');
+                    isFirstPage = false;
+                }
+                
+                doc.addImage(imgData, 'JPEG', 0, 0, pdfWidth, pdfHeight);
+            }
+
+            if (doc.getNumberOfPages() > 1) {
+                doc.deletePage(1);
+            }
+
+            doc.save('images-converted.pdf');
+            showToast(`✅ Đã chuyển ${imageFiles.length} ảnh thành PDF`, 'success');
+            
+            selectedConvertFiles = [];
+            convertFileInput.value = '';
+            convertFileListDiv.innerHTML = '';
+            convertBtn.disabled = true;
+        } catch (error) {
+            showToast('❌ Lỗi xử lý ảnh: ' + error.message, 'error');
+        } finally {
+            showLoading(false);
+        }
+        return;
+    }
+
+    if (officeFiles.length > 0) {
+        if (officeFiles.length > 1) {
+            showToast('⚠️ Backend hiện chỉ hỗ trợ chuyển đổi từng file văn phòng một.', 'warning');
+            return;
+        }
+
+        const file = officeFiles[0];
+        const formData = new FormData();
+        formData.append('file', file);
+        
+        showLoading(true);
+        try {
+            const response = await fetch(`${API_URL}/convert-to-pdf`, {
+                method: 'POST',
+                body: formData
+            });
+            
+            if (!response.ok) {
+                const error = await response.json();
+                throw new Error(error.error || 'Lỗi chuyển đổi');
+            }
+            
+            const blob = await response.blob();
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = file.name.replace(/\.(docx|xlsx|xls)$/i, '.pdf');
+            a.click();
+            URL.revokeObjectURL(url);
+            
+            showToast('✅ Chuyển đổi thành công!', 'success');
+            
+            selectedConvertFiles = [];
+            convertFileInput.value = '';
+            convertFileListDiv.innerHTML = '';
+            convertBtn.disabled = true;
+        } catch (error) {
+            showToast('❌ Lỗi: ' + error.message, 'error');
+        } finally {
+            showLoading(false);
+        }
+        return;
+    }
+
+    showToast('ℹ️ File PDF không cần chuyển đổi.', 'warning');
 });
+
+function readFileAsDataURL(file) {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = (e) => resolve(e.target.result);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+    });
+}
+
+function loadImage(src) {
+    return new Promise((resolve, reject) => {
+        const img = new Image();
+        img.onload = () => resolve(img);
+        img.onerror = reject;
+        img.src = src;
+    });
+}
 
 // ==================== 2. GỘP PDF ====================
 const mergeUpload = document.getElementById('merge-upload');
@@ -100,7 +264,7 @@ mergeFiles.addEventListener('change', (e) => {
 function updateMergeFileList() {
     mergeFileList.innerHTML = selectedMergeFiles.map(file => `
         <div class="file-item">
-            <span>📄 ${file.name}</span>
+            <span><i class="fas fa-file-pdf"></i> ${file.name}</span>
             <span>${(file.size / 1024).toFixed(2)} KB</span>
         </div>
     `).join('');
@@ -108,7 +272,7 @@ function updateMergeFileList() {
 
 mergeBtn.addEventListener('click', async () => {
     if (selectedMergeFiles.length < 2) {
-        alert('Vui lòng chọn ít nhất 2 file PDF');
+        showToast('Vui lòng chọn ít nhất 2 file PDF', 'warning');
         return;
     }
     
@@ -133,13 +297,13 @@ mergeBtn.addEventListener('click', async () => {
         a.click();
         URL.revokeObjectURL(url);
         
-        alert('✅ Gộp PDF thành công!');
+        showToast('✅ Gộp PDF thành công!', 'success');
         selectedMergeFiles = [];
         mergeFiles.value = '';
         updateMergeFileList();
         mergeBtn.disabled = true;
     } catch (error) {
-        alert('❌ Lỗi: ' + error.message);
+        showToast('❌ Lỗi: ' + error.message, 'error');
     } finally {
         showLoading(false);
     }
@@ -165,7 +329,7 @@ splitFile.addEventListener('change', (e) => {
     if (selectedSplitFile) {
         splitFileInfo.innerHTML = `
             <div class="file-item">
-                <span>📄 ${selectedSplitFile.name}</span>
+                <span><i class="fas fa-file-pdf"></i> ${selectedSplitFile.name}</span>
                 <span>${(selectedSplitFile.size / 1024).toFixed(2)} KB</span>
             </div>
         `;
@@ -178,7 +342,7 @@ splitFile.addEventListener('change', (e) => {
 
 splitBtn.addEventListener('click', async () => {
     if (!selectedSplitFile) {
-        alert('Vui lòng chọn file PDF');
+        showToast('Vui lòng chọn file PDF', 'warning');
         return;
     }
     
@@ -190,7 +354,7 @@ splitBtn.addEventListener('click', async () => {
     if (mode === 'range') {
         const range = splitRange.value.trim();
         if (!range) {
-            alert('Vui lòng nhập khoảng trang cần tách');
+            showToast('Vui lòng nhập khoảng trang cần tách', 'warning');
             return;
         }
         formData.append('pageRange', range);
@@ -214,13 +378,13 @@ splitBtn.addEventListener('click', async () => {
         a.click();
         URL.revokeObjectURL(url);
         
-        alert('✅ Tách PDF thành công!');
+        showToast('✅ Tách PDF thành công!', 'success');
         selectedSplitFile = null;
         splitFile.value = '';
         splitFileInfo.innerHTML = '';
         splitBtn.disabled = true;
     } catch (error) {
-        alert('❌ Lỗi: ' + error.message);
+        showToast('❌ Lỗi: ' + error.message, 'error');
     } finally {
         showLoading(false);
     }
@@ -249,7 +413,7 @@ signPdfUpload.addEventListener('click', () => signPdfFile.click());
 signPdfFile.addEventListener('change', (e) => {
     selectedPdfFile = e.target.files[0];
     if (selectedPdfFile) {
-        signPdfInfo.innerHTML = `<div class="file-item"><span>📄 ${selectedPdfFile.name}</span></div>`;
+        signPdfInfo.innerHTML = `<div class="file-item"><span><i class="fas fa-file-pdf"></i> ${selectedPdfFile.name}</span></div>`;
     } else {
         signPdfInfo.innerHTML = '';
     }
@@ -260,7 +424,7 @@ signImageUpload.addEventListener('click', () => signImageFile.click());
 signImageFile.addEventListener('change', (e) => {
     selectedSignImage = e.target.files[0];
     if (selectedSignImage) {
-        signImageInfo.innerHTML = `<div class="file-item"><span>✍️ ${selectedSignImage.name}</span></div>`;
+        signImageInfo.innerHTML = `<div class="file-item"><span><i class="fas fa-image"></i> ${selectedSignImage.name}</span></div>`;
     } else {
         signImageInfo.innerHTML = '';
     }
@@ -269,7 +433,7 @@ signImageFile.addEventListener('change', (e) => {
 
 signBtn.addEventListener('click', async () => {
     if (!selectedPdfFile || !selectedSignImage) {
-        alert('Vui lòng chọn file PDF và ảnh chữ ký');
+        showToast('Vui lòng chọn file PDF và ảnh chữ ký', 'warning');
         return;
     }
     
@@ -298,7 +462,7 @@ signBtn.addEventListener('click', async () => {
         a.click();
         URL.revokeObjectURL(url);
         
-        alert('✅ Ký điện tử thành công!');
+        showToast('✅ Ký điện tử thành công!', 'success');
         
         selectedPdfFile = null;
         selectedSignImage = null;
@@ -312,7 +476,7 @@ signBtn.addEventListener('click', async () => {
         signBtn.disabled = true;
         
     } catch (error) {
-        alert('❌ Lỗi: ' + error.message);
+        showToast('❌ Lỗi: ' + error.message, 'error');
     } finally {
         showLoading(false);
     }
@@ -336,8 +500,44 @@ async function checkServer() {
         }
     } catch (error) {
         console.error('❌ Cannot connect to server');
-        alert('⚠️ Không thể kết nối đến server. Vui lòng chạy backend trước!');
+        showToast('⚠️ Không thể kết nối đến server. Vui lòng chạy backend trước!', 'error');
     }
 }
+
+// ==================== POPUP GIỚI THIỆU ====================
+function showIntro() {
+    const dontShow = localStorage.getItem('pdfMasterDontShowIntro');
+    if (dontShow === 'true') {
+        return;
+    }
+    
+    const popup = document.getElementById('introPopup');
+    if (popup) {
+        popup.style.display = 'flex';
+    }
+}
+
+function closeIntro() {
+    const popup = document.getElementById('introPopup');
+    if (popup) {
+        popup.style.display = 'none';
+    }
+    
+    const dontShowAgain = document.getElementById('dontShowIntroAgain');
+    if (dontShowAgain && dontShowAgain.checked) {
+        localStorage.setItem('pdfMasterDontShowIntro', 'true');
+    }
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+    setTimeout(showIntro, 500);
+});
+
+document.addEventListener('click', function(event) {
+    const popup = document.getElementById('introPopup');
+    if (popup && event.target === popup) {
+        closeIntro();
+    }
+});
 
 checkServer();
