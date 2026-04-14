@@ -3,33 +3,17 @@ import cors from 'cors';
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs/promises';
-import { PDFDocument, rgb } from 'pdf-lib';
-import fontkit from '@pdf-lib/fontkit';
+import { PDFDocument, rgb, StandardFonts } from 'pdf-lib';
 import mammoth from 'mammoth';
 import ExcelJS from 'exceljs';
 
 const app = express();
-const PORT = process.env.PORT || 3001;
+const PORT = 3001;
 
 app.use(cors());
 app.use(express.json({ limit: '100mb' }));
 
-// Tải Font Roboto hỗ trợ Tiếng Việt
-let customFontBytes;
-async function loadFont() {
-    try {
-        const url = 'https://github.com/googlefonts/roboto/raw/main/src/hinted/Roboto-Regular.ttf';
-        const response = await fetch(url);
-        const arrayBuffer = await response.arrayBuffer();
-        customFontBytes = new Uint8Array(arrayBuffer);
-        console.log('✅ Đã tải thành công Font Tiếng Việt (Roboto)');
-    } catch (error) {
-        console.error('❌ Lỗi tải font, sẽ dùng font mặc định:', error);
-    }
-}
-loadFont();
-
-// Cấu hình upload & Bảo mật Filter
+// Cấu hình upload
 const storage = multer.diskStorage({
   destination: async (req, file, cb) => {
     const uploadDir = 'uploads';
@@ -39,158 +23,183 @@ const storage = multer.diskStorage({
     cb(null, uploadDir);
   },
   filename: (req, file, cb) => {
-    cb(null, Date.now() + '-' + file.originalname.replace(/\s+/g, '_'));
+    cb(null, Date.now() + '-' + file.originalname);
   }
 });
 
-const fileFilter = (req, file, cb) => {
-    const allowedMimeTypes = [
-        'application/pdf',
-        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-        'application/vnd.ms-excel',
-        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-        'image/png', 'image/jpeg', 'image/jpg'
-    ];
-    if (allowedMimeTypes.includes(file.mimetype)) {
-        cb(null, true);
-    } else {
-        cb(new Error('Định dạng file không được hỗ trợ để bảo mật.'), false);
-    }
-};
-
-const upload = multer({ storage, fileFilter, limits: { fileSize: 100 * 1024 * 1024 } });
-
-// Helper: Vẽ text hỗ trợ Unicode chuẩn xác
-async function drawUnicodeText(page, text, x, y, size, options = {}) {
-  try {
-    const { doc } = page;
-    doc.registerFontkit(fontkit);
-    const font = customFontBytes ? await doc.embedFont(customFontBytes) : await doc.embedStandardFont('Helvetica');
-    
-    const lines = text.split('\n');
-    let currentY = y;
-    
-    for (const line of lines) {
-      page.drawText(line, {
-        x: x,
-        y: currentY,
-        size: size,
-        font: font,
-        color: options.color || rgb(0, 0, 0)
-      });
-      currentY -= (size + 5);
-    }
-  } catch (error) {
-    console.error('Lỗi vẽ text:', error);
-  }
-}
+const upload = multer({ storage, limits: { fileSize: 100 * 1024 * 1024 } });
 
 // ==================== KIỂM TRA SERVER ====================
 app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok', message: 'PDF Master Server is running securely!' });
+  res.json({ status: 'ok', message: 'PDF Master Server is running!' });
 });
 
 // ==================== 1. CHUYỂN ĐỔI DOCX/EXCEL -> PDF ====================
 app.post('/api/convert-to-pdf', upload.single('file'), async (req, res) => {
   try {
     const file = req.file;
-    if (!file) return res.status(400).json({ error: 'Chưa có file hoặc định dạng không hợp lệ' });
+    if (!file) {
+      return res.status(400).json({ error: 'Chưa có file' });
+    }
 
     const fileExt = path.extname(file.originalname).toLowerCase();
     const outputPath = file.path.replace(/\.[^/.]+$/, '.pdf');
     
     if (fileExt === '.docx') {
+      // Chuyển đổi DOCX sang PDF
       const inputBuffer = await fs.readFile(file.path);
       const result = await mammoth.extractRawText({ buffer: inputBuffer });
       const text = result.value;
       
+      // Tạo PDF từ text
       const pdfDoc = await PDFDocument.create();
-      let page = pdfDoc.addPage([600, 800]);
-      const { height } = page.getSize();
+      const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+      const page = pdfDoc.addPage([600, 800]);
+      const { width, height } = page.getSize();
       
-      await drawUnicodeText(page, `Chuyển đổi từ: ${file.originalname}`, 50, height - 50, 12, { color: rgb(0, 0, 0.8) });
-      await drawUnicodeText(page, `Ngày xuất: ${new Date().toLocaleString('vi-VN')}`, 50, height - 70, 10, { color: rgb(0.5, 0.5, 0.5) });
+      // Tiêu đề
+      page.drawText(`Chuyển đổi từ: ${file.originalname}`, {
+        x: 50,
+        y: height - 50,
+        size: 14,
+        font: font,
+        color: rgb(0, 0, 0.8)
+      });
       
-      // Chia dòng thông minh hơn
-      const lines = text.match(/.{1,90}(\s|$)/g) || [];
-      let y = height - 110;
+      page.drawText(`Ngày chuyển đổi: ${new Date().toLocaleString()}`, {
+        x: 50,
+        y: height - 80,
+        size: 10,
+        font: font,
+        color: rgb(0.5, 0.5, 0.5)
+      });
+      
+      // Nội dung
+      const lines = text.split('\n').slice(0, 100);
+      let y = height - 120;
       
       for (const line of lines) {
-        if (y < 50) {
-          page = pdfDoc.addPage([600, 800]);
-          y = height - 50;
-        }
-        if (line.trim()) {
-          await drawUnicodeText(page, line.trim(), 50, y, 11);
-        }
-        y -= 16;
+        if (y < 50) break;
+        const displayLine = line.length > 100 ? line.substring(0, 100) + '...' : line;
+        page.drawText(displayLine || ' ', {
+          x: 50,
+          y: y,
+          size: 10,
+          font: font,
+          color: rgb(0, 0, 0)
+        });
+        y -= 18;
       }
       
       const pdfBytes = await pdfDoc.save();
       await fs.writeFile(outputPath, pdfBytes);
       
     } else if (fileExt === '.xlsx' || fileExt === '.xls') {
+      // Chuyển đổi Excel sang PDF
       const workbook = new ExcelJS.Workbook();
       await workbook.xlsx.readFile(file.path);
-      const pdfDoc = await PDFDocument.create();
       
-      for (const worksheet of workbook.worksheets) {
+      const pdfDoc = await PDFDocument.create();
+      const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+      
+      workbook.eachWorksheet((worksheet, worksheetId) => {
         let page = pdfDoc.addPage([800, 1100]);
         const { width, height } = page.getSize();
         
-        await drawUnicodeText(page, `Sheet: ${worksheet.name}`, 50, height - 50, 14, { color: rgb(0, 0, 0.8) });
-        
-        const rows = [];
-        worksheet.eachRow((row, rowNumber) => {
-          if (rowNumber <= 100) { 
-            const rowData = [];
-            row.eachCell((cell) => {
-              let value = cell.value;
-              if (value && typeof value === 'object') value = value.text || value.result || JSON.stringify(value);
-              rowData.push(String(value || ''));
-            });
-            rows.push(rowData);
-          }
+        // Tiêu đề worksheet
+        page.drawText(`Sheet: ${worksheet.name}`, {
+          x: 50,
+          y: height - 50,
+          size: 16,
+          font: font,
+          color: rgb(0, 0, 0.8)
         });
         
+        page.drawText(`File: ${file.originalname}`, {
+          x: 50,
+          y: height - 80,
+          size: 10,
+          font: font,
+          color: rgb(0.5, 0.5, 0.5)
+        });
+        
+        // Lấy dữ liệu
+        const rows = [];
+        worksheet.eachRow((row, rowNumber) => {
+          const rowData = [];
+          row.eachCell((cell) => {
+            let value = cell.value;
+            if (value && typeof value === 'object') {
+              value = value.text || value.result || JSON.stringify(value);
+            }
+            rowData.push(value || '');
+          });
+          rows.push(rowData);
+        });
+        
+        // Vẽ bảng
         const startX = 50;
-        let startY = height - 100;
+        let startY = height - 120;
         const rowHeight = 25;
+        const colWidths = [];
         
         if (rows.length > 0) {
-          const colWidths = rows[0].map((_, i) => {
+          for (let i = 0; i < rows[0].length; i++) {
             let maxLen = 10;
-            rows.forEach(r => { if(r[i] && r[i].length > maxLen) maxLen = Math.min(r[i].length, 30); });
-            return maxLen * 7;
-          });
+            for (let j = 0; j < Math.min(rows.length, 20); j++) {
+              const cellLen = String(rows[j][i] || '').length;
+              if (cellLen > maxLen) maxLen = Math.min(cellLen, 30);
+            }
+            colWidths.push(maxLen * 6);
+          }
           
           for (let i = 0; i < Math.min(rows.length, 40); i++) {
             let x = startX;
             for (let j = 0; j < rows[i].length; j++) {
-              const cellText = rows[i][j] ? rows[i][j].substring(0, 40) : '';
-              await drawUnicodeText(page, cellText, x + 3, startY - 5, 9);
-              page.drawRectangle({ x: x, y: startY - rowHeight, width: colWidths[j], height: rowHeight, borderColor: rgb(0.8, 0.8, 0.8), borderWidth: 0.5 });
+              const cellText = String(rows[i][j] || '').substring(0, 40);
+              page.drawText(cellText, {
+                x: x + 3,
+                y: startY - 3,
+                size: 8,
+                font: font,
+                color: rgb(0, 0, 0)
+              });
+              // Vẽ khung
+              page.drawRectangle({
+                x: x,
+                y: startY - rowHeight,
+                width: colWidths[j],
+                height: rowHeight,
+                borderColor: rgb(0.8, 0.8, 0.8),
+                borderWidth: 0.5
+              });
               x += colWidths[j];
             }
             startY -= rowHeight;
-            if (startY < 50) break; // Chỉ hỗ trợ 1 trang để tránh lag memory
+            if (startY < 50) break;
           }
         }
-      }
+      });
       
       const pdfBytes = await pdfDoc.save();
       await fs.writeFile(outputPath, pdfBytes);
       
     } else if (fileExt === '.pdf') {
+      // Nếu đã là PDF thì copy
       await fs.copyFile(file.path, outputPath);
+    } else {
+      await fs.unlink(file.path).catch(() => {});
+      return res.status(400).json({ error: 'Định dạng không hỗ trợ. Hỗ trợ: .docx, .xlsx, .xls, .pdf' });
     }
     
+    // Xóa file gốc và gửi file kết quả
     await fs.unlink(file.path).catch(() => {});
     res.download(outputPath, file.originalname.replace(/\.[^/.]+$/, '.pdf'), async () => {
       await fs.unlink(outputPath).catch(() => {});
     });
     
   } catch (error) {
+    console.error(error);
     res.status(500).json({ error: 'Lỗi chuyển đổi: ' + error.message });
   }
 });
@@ -199,7 +208,9 @@ app.post('/api/convert-to-pdf', upload.single('file'), async (req, res) => {
 app.post('/api/merge-pdf', upload.array('files', 20), async (req, res) => {
   try {
     const files = req.files;
-    if (!files || files.length < 2) return res.status(400).json({ error: 'Cần ít nhất 2 file PDF' });
+    if (!files || files.length < 2) {
+      return res.status(400).json({ error: 'Cần ít nhất 2 file PDF' });
+    }
 
     const mergedPdf = await PDFDocument.create();
     
@@ -213,12 +224,16 @@ app.post('/api/merge-pdf', upload.array('files', 20), async (req, res) => {
     const outputPath = `uploads/merged_${Date.now()}.pdf`;
     await fs.writeFile(outputPath, await mergedPdf.save());
     
-    for (const file of files) await fs.unlink(file.path).catch(() => {});
+    // Xóa file gốc
+    for (const file of files) {
+      await fs.unlink(file.path).catch(() => {});
+    }
     
     res.download(outputPath, `merged_${Date.now()}.pdf`, async () => {
       await fs.unlink(outputPath).catch(() => {});
     });
   } catch (error) {
+    console.error(error);
     res.status(500).json({ error: 'Lỗi khi gộp PDF: ' + error.message });
   }
 });
@@ -228,7 +243,10 @@ app.post('/api/split-pdf', upload.single('file'), async (req, res) => {
   try {
     const file = req.file;
     const { pageRange, mode } = req.body;
-    if (!file) return res.status(400).json({ error: 'Chưa có file PDF' });
+    
+    if (!file) {
+      return res.status(400).json({ error: 'Chưa có file PDF' });
+    }
 
     const pdfBytes = await fs.readFile(file.path);
     const sourcePdf = await PDFDocument.load(pdfBytes);
@@ -236,9 +254,11 @@ app.post('/api/split-pdf', upload.single('file'), async (req, res) => {
     const newPdf = await PDFDocument.create();
     
     if (mode === 'first') {
+      // Tách trang đầu
       const [page] = await newPdf.copyPages(sourcePdf, [0]);
       newPdf.addPage(page);
     } else if (mode === 'range' && pageRange) {
+      // Tách theo khoảng trang: "1-3,5,7-9"
       const ranges = pageRange.split(',');
       const pageIndices = [];
       
@@ -260,12 +280,14 @@ app.post('/api/split-pdf', upload.single('file'), async (req, res) => {
     
     const outputPath = `uploads/split_${Date.now()}.pdf`;
     await fs.writeFile(outputPath, await newPdf.save());
+    
     await fs.unlink(file.path).catch(() => {});
     
     res.download(outputPath, `split_${Date.now()}.pdf`, async () => {
       await fs.unlink(outputPath).catch(() => {});
     });
   } catch (error) {
+    console.error(error);
     res.status(500).json({ error: 'Lỗi khi tách PDF: ' + error.message });
   }
 });
@@ -280,56 +302,84 @@ app.post('/api/sign-pdf', upload.fields([
     const signatureFile = req.files['signature']?.[0];
     const { signerName, reason, location } = req.body;
     
-    if (!pdfFile || !signatureFile) return res.status(400).json({ error: 'Thiếu file PDF hoặc chữ ký' });
+    if (!pdfFile || !signatureFile) {
+      return res.status(400).json({ error: 'Thiếu file PDF hoặc chữ ký' });
+    }
     
+    // Đọc file PDF
     const pdfBytes = await fs.readFile(pdfFile.path);
     const pdfDoc = await PDFDocument.load(pdfBytes);
     const pages = pdfDoc.getPages();
     const lastPage = pages[pages.length - 1];
     const { width, height } = lastPage.getSize();
     
+    // Đọc ảnh chữ ký
     const sigBytes = await fs.readFile(signatureFile.path);
     let signatureImage;
+    
     if (signatureFile.mimetype === 'image/png') {
       signatureImage = await pdfDoc.embedPng(sigBytes);
     } else {
       signatureImage = await pdfDoc.embedJpg(sigBytes);
     }
     
-    const sigWidth = 140;
+    const sigWidth = 150;
     const sigHeight = (signatureImage.height / signatureImage.width) * sigWidth;
     
-    // Tọa độ động: Góc dưới bên phải, cách lề 50px
-    const drawX = width - sigWidth - 50;
-    const drawY = 80;
-
+    // Vẽ chữ ký ở góc dưới phải
     lastPage.drawImage(signatureImage, {
-      x: drawX,
-      y: drawY,
+      x: width - sigWidth - 50,
+      y: 50,
       width: sigWidth,
       height: sigHeight
     });
     
-    // Thêm Text Tiếng Việt có dấu bằng Fontkit
-    pdfDoc.registerFontkit(fontkit);
-    const font = customFontBytes ? await pdfDoc.embedFont(customFontBytes) : await pdfDoc.embedStandardFont('Helvetica');
-    const yOffset = drawY - 15;
-    const textX = width - 250;
+    // Thêm thông tin ký
+    const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+    const yOffset = sigHeight + 20;
     
     if (signerName) {
-      lastPage.drawText(`Người ký: ${signerName}`, { x: textX, y: yOffset, size: 10, font: font, color: rgb(0, 0, 0) });
+      lastPage.drawText(`Người ký: ${signerName}`, {
+        x: width - 250,
+        y: 50 + yOffset,
+        size: 10,
+        font: font,
+        color: rgb(0, 0, 0)
+      });
     }
+    
     if (reason) {
-      lastPage.drawText(`Lý do: ${reason}`, { x: textX, y: yOffset - 15, size: 10, font: font, color: rgb(0, 0, 0) });
+      lastPage.drawText(`Lý do: ${reason}`, {
+        x: width - 250,
+        y: 35 + yOffset,
+        size: 10,
+        font: font,
+        color: rgb(0, 0, 0)
+      });
     }
+    
     if (location) {
-      lastPage.drawText(`Địa điểm: ${location}`, { x: textX, y: yOffset - 30, size: 10, font: font, color: rgb(0, 0, 0) });
+      lastPage.drawText(`Địa điểm: ${location}`, {
+        x: width - 250,
+        y: 20 + yOffset,
+        size: 10,
+        font: font,
+        color: rgb(0, 0, 0)
+      });
     }
-    lastPage.drawText(`Ngày ký: ${new Date().toLocaleString('vi-VN')}`, { x: textX, y: yOffset - 45, size: 9, font: font, color: rgb(0.5, 0.5, 0.5) });
+    
+    lastPage.drawText(`Ngày ký: ${new Date().toLocaleString()}`, {
+      x: width - 250,
+      y: 5 + yOffset,
+      size: 10,
+      font: font,
+      color: rgb(0.5, 0.5, 0.5)
+    });
     
     const outputPath = `uploads/signed_${Date.now()}.pdf`;
     await fs.writeFile(outputPath, await pdfDoc.save());
     
+    // Xóa file tạm
     await fs.unlink(pdfFile.path).catch(() => {});
     await fs.unlink(signatureFile.path).catch(() => {});
     
@@ -338,10 +388,13 @@ app.post('/api/sign-pdf', upload.fields([
     });
     
   } catch (error) {
+    console.error(error);
     res.status(500).json({ error: 'Lỗi khi ký số: ' + error.message });
   }
 });
 
 app.listen(PORT, () => {
-  console.log(`✅ PDF Master Server đang chạy tại Port: ${PORT}`);
+  console.log(`✅ PDF Master Server đang chạy tại: http://localhost:${PORT}`);
+  console.log(`📄 Hỗ trợ: DOCX, XLSX, XLS, PDF`);
+  console.log(`✍️  Tính năng: Chuyển đổi, Gộp, Tách, Ký điện tử`);
 });
